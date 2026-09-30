@@ -1,0 +1,101 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>시험지 문항 추출 데모</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.65 -apple-system,"Apple SD Gothic Neo",sans-serif;background:#f4f4f5;color:#18181b}
+#w{max-width:520px;margin:0 auto;padding:48px 20px}
+h1{font-size:22px;margin:0 0 6px} .sub{color:#71717a;margin:0 0 28px;font-size:14px}
+label{display:block;font-weight:600;font-size:13px;margin:0 0 6px}
+.drop{border:1.5px dashed #d4d4d8;border-radius:10px;padding:22px;text-align:center;
+  background:#fff;cursor:pointer;margin-bottom:16px;transition:.15s}
+.drop:hover,.drop.on{border-color:#2563eb;background:#eff6ff}
+.drop .f{font-size:13px;color:#71717a;margin-top:4px}
+.drop.has{border-style:solid;border-color:#16a34a;background:#f0fdf4}
+input[type=file]{display:none}
+button{width:100%;padding:13px;font:inherit;font-weight:600;border:0;border-radius:9px;
+  background:#18181b;color:#fff;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+#out{margin-top:22px}
+.card{background:#fff;border:1px solid #e4e4e7;border-radius:10px;padding:16px;margin-bottom:10px}
+.v{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700}
+.v.ok{background:#dcfce7;color:#166534} .v.warn{background:#fef9c3;color:#854d0e}
+.v.no{background:#fee2e2;color:#991b1b}
+.k{color:#71717a;font-size:13px}
+.links{display:flex;gap:8px;margin-top:12px}
+.links a{flex:1;text-align:center;padding:10px;border:1px solid #d4d4d8;border-radius:8px;
+  text-decoration:none;color:#18181b;font-size:14px}
+.links a.go{background:#2563eb;color:#fff;border-color:#2563eb;font-weight:600}
+.err{background:#fef2f2;border-color:#fecaca;color:#991b1b;font-size:13px;white-space:pre-wrap}
+</style></head><body><div id="w">
+<h1>시험지 문항 추출</h1>
+<p class="sub">PDF를 올리면 문항 영역을 자동으로 잘라내고, 정답표가 있으면 정답까지 붙입니다.<br>
+<span style="font-size:12px">※ 현재 평가원 기출 형식(2단 조판, 텍스트 PDF)만 지원합니다. 업로드한 파일은 24시간 뒤 삭제됩니다.</span></p>
+
+<form id="f">
+  <label>문제지 PDF <span style="color:#dc2626">*</span></label>
+  <div class="drop" id="d1">클릭해서 선택<div class="f" id="n1">또는 파일을 여기로 끌어다 놓으세요</div>
+    <input type="file" id="paper" accept="application/pdf" required></div>
+
+  <label>정답표 PDF <span class="k">(선택)</span></label>
+  <div class="drop" id="d2">클릭해서 선택<div class="f" id="n2">없으면 나중에 직접 입력할 수 있습니다</div>
+    <input type="file" id="key" accept="application/pdf"></div>
+
+  <label style="margin-top:4px">접근 코드 <span class="k">(데모)</span></label>
+  <input id="code" type="password" placeholder="발급받은 코드"
+    style="width:100%;padding:11px;font:inherit;border:1px solid #d4d4d8;border-radius:9px;margin-bottom:16px">
+
+  <button id="go">분석하기</button>
+</form>
+<div id="out"></div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+[['d1','paper','n1'],['d2','key','n2']].forEach(([d,i,n]) => {
+  const D = $('#'+d), I = $('#'+i), N = $('#'+n);
+  D.onclick = () => I.click();
+  I.onchange = () => { if (I.files[0]) { D.classList.add('has'); N.textContent = I.files[0].name; } };
+  D.ondragover = e => { e.preventDefault(); D.classList.add('on'); };
+  D.ondragleave = () => D.classList.remove('on');
+  D.ondrop = e => { e.preventDefault(); D.classList.remove('on');
+    I.files = e.dataTransfer.files; I.onchange(); };
+});
+
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  if (!$('#paper').files[0]) return;
+  $('#go').disabled = true; $('#go').textContent = '분석 중…';
+  $('#out').innerHTML = '';
+
+  const fd = new FormData();
+  fd.append('paper', $('#paper').files[0]);
+  if ($('#key').files[0]) fd.append('key', $('#key').files[0]);
+
+  try {
+    const r = await fetch('/api/upload', { method: 'POST', body: fd,
+      headers: $('#code').value ? { 'x-demo-key': $('#code').value } : {} });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.error || j.detail || '처리 실패');
+
+    const q = j.quality;
+    const cls = q.ok ? 'ok' : (q.verdict === 'AI필요' ? 'no' : 'warn');
+    $('#out').innerHTML = `<div class="card">
+      <span class="v ${cls}">${q.verdict}</span>
+      <div class="k" style="margin-top:8px">${q.reason}</div>${
+        q.ok ? '' : `<div class="k" style="margin-top:6px;color:#b45309">${
+          q.verdict === 'AI필요'
+            ? '이 PDF는 조판이 달라 자동 추출이 안 됐습니다. 현재 데모는 평가원 기출 형식만 지원합니다.'
+            : '일부 문항을 확인해야 합니다. 선생님 화면에서 영역을 점검해 주세요.'}</div>`}
+      <div style="margin-top:10px">${j.pages}쪽 · 블록 ${j.blocks}개${
+        j.answers ? ` · 정답 ${j.answers.매칭}개 (${j.answers.방식})` : ' · 정답표 없음'}</div>
+      <div class="links">
+        <a href="/viewer.html?id=${j.id}">선생님 화면</a>
+        <a class="go" href="/solve.html?id=${j.id}">학생 화면</a>
+      </div></div>`;
+  } catch (err) {
+    $('#out').innerHTML = `<div class="card err">${err.message}</div>`;
+  }
+  $('#go').disabled = false; $('#go').textContent = '분석하기';
+};
+</script></body></html>

@@ -1,0 +1,143 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<title>학생 풀이 화면</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.6 -apple-system,"Apple SD Gothic Neo",sans-serif;background:#f4f4f5;color:#18181b}
+#app{max-width:680px;margin:0 auto;min-height:100vh;background:#fff;display:flex;flex-direction:column}
+#top{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #e4e4e7;position:sticky;top:0;background:#fff;z-index:5}
+#prog{flex:1;height:5px;background:#e4e4e7;border-radius:3px;overflow:hidden}
+#prog i{display:block;height:100%;background:#18181b;transition:.2s}
+#body{flex:1;padding:16px}
+.crop{position:relative;overflow:hidden;width:100%;background:#fff;margin-bottom:10px;
+  border:1px solid #e4e4e7;border-radius:8px}
+.crop img{position:absolute;max-width:none}
+.pass{font-size:11px;color:#a855f7;font-weight:700;margin:2px 0 6px}
+#choices{display:flex;gap:8px;padding:14px 16px;border-top:1px solid #e4e4e7;
+  position:sticky;bottom:0;background:#fff}
+#choices button{flex:1;padding:14px 0;font-size:19px;border:1.5px solid #d4d4d8;background:#fff;
+  border-radius:10px;cursor:pointer}
+#choices button.on{background:#18181b;color:#fff;border-color:#18181b}
+#nav{display:flex;gap:8px;padding:0 16px 16px}
+#nav button{flex:1;padding:11px;font:inherit;border:1px solid #d4d4d8;background:#fff;border-radius:8px;cursor:pointer}
+#nav button.go{background:#2563eb;color:#fff;border-color:#2563eb;font-weight:600}
+#nav button:disabled{opacity:.35}
+#res{padding:24px 16px}
+#res h2{margin:0 0 4px;font-size:26px} #res .sub{color:#71717a;margin-bottom:18px}
+.row{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #e4e4e7;
+  border-radius:8px;margin-bottom:6px}
+.row.x{border-color:#fecaca;background:#fef2f2}
+.row .n{font-weight:700;min-width:42px} .row .m{margin-left:auto;font-size:13px;color:#71717a}
+</style></head><body>
+<div id="app">
+  <div id="top"><b id="qno">—</b><div id="prog"><i></i></div><span id="cnt"></span></div>
+  <div id="body"></div>
+  <div id="choices"></div>
+  <div id="nav">
+    <button id="p">이전</button><button id="n">다음</button><button id="sub" class="go">제출</button>
+  </div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const ID = new URLSearchParams(location.search).get('id');
+let D, Q = [], i = 0, my = JSON.parse(localStorage.getItem('my') || '{}');
+
+fetch(ID ? `/api/${ID}/questions.json` : 'out/questions.json').then(r => r.json()).then(d => {
+  D = d;
+  // 학생에게 보여줄 목록 = 공유지문이 아닌 블록들
+  Q = d.blocks.filter(b => !b.shared).sort((a, b) => a.nos[0] - b.nos[0]);
+  show();
+});
+
+// 이 문항이 속한 공유 지문 블록 찾기
+const passageOf = no => D.blocks.find(b => b.shared && b.nos.includes(no));
+
+/* 페이지 이미지 한 장에서 bbox 영역만 CSS로 오려 보여준다 — 문항별 이미지 저장 불필요 */
+function crop(region, host) {
+  const { page, box: [x, y, w, h] } = region;
+  const d = document.createElement('div'); d.className = 'crop';
+  const im = document.createElement('img');
+  im._box = [x, y, w, h];
+  im.src = (ID ? `/api/${ID}/` : 'out/') + D.pages[page - 1].img;
+  im.onload = () => fit(im);
+  d.append(im); host.append(d);
+  if (im.complete) fit(im);          // 캐시된 이미지는 onload가 안 뜬다
+}
+
+/* 실제 렌더 크기에 맞춰 오려낼 위치·배율 계산 (DOM은 만들지 않는다) */
+function fit(im) {
+  const [x, y, w, h] = im._box, d = im.parentElement;
+  const CW = d.clientWidth;
+  if (!CW || !im.naturalWidth) return;
+  const iw = CW / w, ih = iw * (im.naturalHeight / im.naturalWidth);
+  im.style.width = iw + 'px';
+  im.style.left = -(x * iw) + 'px';
+  im.style.top  = -(y * ih) + 'px';
+  d.style.height = (h * ih) + 'px';
+}
+
+function show() {
+  const b = Q[i], no = b.nos[0];
+  $('#qno').textContent = no + '번';
+  $('#cnt').textContent = `${i + 1}/${Q.length}`;
+  $('#prog i').style.width = (Object.keys(my).length / Q.length * 100) + '%';
+
+  const B = $('#body'); B.innerHTML = '';
+  const p = passageOf(no);
+  if (p) {
+    const t = document.createElement('div'); t.className = 'pass';
+    t.textContent = `[${p.nos[0]}~${p.nos.at(-1)}] 공유 지문`; B.append(t);
+    p.regions.forEach(r => crop(r, B));
+  }
+  b.regions.forEach(r => crop(r, B));
+
+  const C = $('#choices'); C.innerHTML = '';
+  '12345'.split('').forEach(v => {
+    const btn = document.createElement('button');
+    btn.textContent = '①②③④⑤'['12345'.indexOf(v)];
+    btn.className = my[no] === v ? 'on' : '';
+    btn.onclick = () => {
+      my[no] = my[no] === v ? undefined : v;
+      if (!my[no]) delete my[no];
+      localStorage.setItem('my', JSON.stringify(my));
+      if (my[no] && i < Q.length - 1) { i++; }      // 고르면 자동으로 다음
+      show();
+    };
+    C.append(btn);
+  });
+  $('#p').disabled = i === 0; $('#n').disabled = i === Q.length - 1;
+}
+
+$('#p').onclick = () => { i--; show(); };
+$('#n').onclick = () => { i++; show(); };
+
+$('#sub').onclick = () => {
+  const un = Q.filter(b => !my[b.nos[0]]).length;
+  if (un && !confirm(`${un}문항이 비었습니다. 제출할까요?`)) return;
+
+  /* 채점 — 학생 답과 정답을 문항 단위로 비교. 정답 스냅샷도 같이 남긴다 */
+  const rows = Q.map(b => {
+    const no = b.nos[0], mine = my[no] || null, key = b.answer;
+    return { no, mine, key, points: b.points,
+             ok: mine != null && mine === key,
+             score: (mine != null && mine === key) ? b.points : 0 };
+  });
+  const got = rows.reduce((a, r) => a + r.score, 0);
+  const max = rows.reduce((a, r) => a + r.points, 0);
+  localStorage.setItem('graded', JSON.stringify({ at: new Date().toISOString(), rows, got, max }));
+
+  $('#choices').remove(); $('#nav').remove(); $('#top').remove();
+  const B = $('#body'); B.id = 'res';
+  B.innerHTML = `<h2>${got} / ${max}점</h2>
+    <div class="sub">정답 ${rows.filter(r => r.ok).length} · 오답 ${rows.filter(r => !r.ok).length}
+    &nbsp;|&nbsp; ${new Date().toLocaleString('ko')}</div>` +
+    rows.filter(r => !r.ok).map(r => `<div class="row x">
+      <span class="n">${r.no}번</span>
+      <span>내 답 ${r.mine ? '①②③④⑤'['12345'.indexOf(r.mine)] : '무응답'}</span>
+      <span class="m">정답 ${'①②③④⑤'['12345'.indexOf(r.key)]} · ${r.points}점</span></div>`).join('')
+    || '<div class="row">전부 정답입니다 🎉</div>';
+};
+let rt; onresize = () => {            // show() 를 부르면 스크롤바 토글 → 리사이즈 → 무한루프
+  clearTimeout(rt);
+  rt = setTimeout(() => document.querySelectorAll('.crop img').forEach(fit), 150);
+};
+</script></body></html>

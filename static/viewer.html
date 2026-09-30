@@ -1,0 +1,177 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<title>문항 추출 프로토타입</title>
+<style>
+*{box-sizing:border-box} body{margin:0;font:14px/1.5 -apple-system,"Apple SD Gothic Neo",sans-serif;
+  background:#f4f4f5;color:#18181b;display:flex;height:100vh;overflow:hidden}
+#stage{flex:1;display:flex;flex-direction:column;min-width:0}
+#bar{display:flex;gap:8px;align-items:center;padding:10px 14px;background:#fff;border-bottom:1px solid #e4e4e7;flex-wrap:wrap}
+#bar b{font-size:15px;margin-right:6px}
+button{font:inherit;padding:5px 11px;border:1px solid #d4d4d8;background:#fff;border-radius:6px;cursor:pointer}
+button:hover{background:#fafafa} button.on{background:#18181b;color:#fff;border-color:#18181b}
+button:disabled{opacity:.4;cursor:default}
+#wrap{flex:1;overflow:auto;padding:20px;display:flex;justify-content:center;align-items:flex-start}
+#page{position:relative;width:min(100%,900px);box-shadow:0 2px 16px #0002;background:#fff;line-height:0}
+#page img{width:100%;display:block}
+#page canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.box{position:absolute;border:1.5px solid #3b82f6;background:#3b82f610;border-radius:3px;
+  cursor:pointer;transition:.12s}
+.box:hover{background:#3b82f622}
+.box.sel{border-color:#ef4444;border-width:2.5px;background:#ef444414;z-index:3}
+.box.shared{border-style:dashed;border-color:#a855f7;background:#a855f70d}
+.box .tag{position:absolute;top:-1px;left:-1px;background:#3b82f6;color:#fff;font-size:10px;
+  line-height:1;padding:3px 5px;border-radius:3px 0 3px 0;font-weight:600}
+.box.sel .tag{background:#ef4444} .box.shared .tag{background:#a855f7}
+#side{width:290px;background:#fff;border-left:1px solid #e4e4e7;overflow:auto;padding:14px}
+#side h3{margin:0 0 4px;font-size:13px;color:#71717a;font-weight:600}
+#stat{font-size:12px;color:#71717a;margin-bottom:12px}
+.q{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid #e4e4e7;
+  border-radius:7px;margin-bottom:6px;cursor:pointer}
+.q:hover{border-color:#a1a1aa} .q.sel{border-color:#ef4444;background:#fef2f2}
+.q .no{font-weight:700;min-width:34px} .q .pt{font-size:11px;color:#71717a}
+.q input{width:38px;text-align:center;font:inherit;padding:3px;border:1px solid #d4d4d8;border-radius:5px}
+.q .ink{font-size:12px}
+.set{font-size:11px;color:#a855f7;font-weight:600;margin:10px 0 4px}
+#hint{font-size:11px;color:#a1a1aa;margin-top:14px;line-height:1.7}
+</style></head><body>
+
+<div id="stage">
+  <div id="bar">
+    <b id="title">…</b>
+    <button id="prev">←</button><span id="pg">1 / 1</span><button id="next">→</button>
+    <span style="flex:1"></span>
+    <button id="tBox" class="on">영역</button>
+    <button id="tAns">정답</button>
+    <button id="tPen">✏️ 필기</button>
+    <button id="clr">지우기</button>
+  </div>
+  <div id="wrap"><div id="page"><img id="img"><canvas id="ink"></canvas></div></div>
+</div>
+
+<div id="side">
+  <h3>문항</h3><div id="stat"></div><div id="list"></div>
+  <div id="hint">· 박스/목록 클릭 → 해당 문항 선택<br>· ← → 키로 페이지 이동<br>
+    · 보라 점선 = 공유 지문<br>· 필기는 획 중심점으로 문항에 자동 귀속됩니다</div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const ID = new URLSearchParams(location.search).get('id');
+let D, page = 1, sel = null, showBox = true, showAns = false, pen = false;
+let ans = JSON.parse(localStorage.getItem('ans') || '{}');
+let ink = JSON.parse(localStorage.getItem('ink') || '{}');   // {page: [stroke]}
+
+fetch(ID ? `/api/${ID}/questions.json` : 'out/questions.json').then(r => r.json()).then(d => {
+  D = d; $('#title').textContent = d.title;
+  D.blocks.forEach(b => { if (b.answer) ans[b.nos[0]] ??= b.answer; });
+  draw();
+});
+
+const qOf = p => D.blocks.filter(b => b.regions.some(r => r.page === p));
+const key = b => b.nos.join('-');
+
+function draw() {
+  $('#img').src = (ID ? `/api/${ID}/` : 'out/') + D.pages[page - 1].img;
+  $('#pg').textContent = `${page} / ${D.pages.length}`;
+  $('#prev').disabled = page === 1; $('#next').disabled = page === D.pages.length;
+
+  [...document.querySelectorAll('.box')].forEach(e => e.remove());
+  if (showBox) for (const b of qOf(page))
+    for (const r of b.regions.filter(r => r.page === page)) {
+      const [x, y, w, h] = r.box, el = document.createElement('div');
+      el.className = 'box' + (b.shared ? ' shared' : '') + (key(b) === sel ? ' sel' : '');
+      el.style.cssText = `left:${x*100}%;top:${y*100}%;width:${w*100}%;height:${h*100}%`;
+      el.innerHTML = `<span class="tag">${b.shared ? b.nos[0]+'~'+b.nos.at(-1) : b.nos[0]}</span>`;
+      el.onclick = e => { e.stopPropagation(); sel = key(b); draw(); };
+      $('#page').append(el);
+    }
+  side(); paintInk();
+}
+
+function side() {
+  const nos = [...new Set(D.blocks.flatMap(b => b.nos))].sort((a, b) => a - b);
+  const done = nos.filter(n => ans[n]).length;
+  $('#stat').innerHTML = `${nos.length}문항 · 정답 ${done}/${nos.length}` +
+    (D.scan ? ' · <span style="color:#ef4444">스캔본</span>' : '');
+  const L = $('#list'); L.innerHTML = '';
+  for (const b of D.blocks) {
+    if (b.shared) {
+      const d = document.createElement('div'); d.className = 'set';
+      d.textContent = `[${b.nos[0]}~${b.nos.at(-1)}] 공유 지문`;
+      d.onclick = () => { page = b.regions[0].page; sel = key(b); draw(); };
+      L.append(d); continue;
+    }
+    const n = b.nos[0], hasInk = strokesOf(n).length > 0;
+    const d = document.createElement('div');
+    d.className = 'q' + (key(b) === sel ? ' sel' : '');
+    d.innerHTML = `<span class="no">${n}번</span><span class="pt">${b.points}점</span>
+      <span style="flex:1"></span><span class="ink">${hasInk ? '✏️' : ''}</span>
+      <input maxlength="2" value="${showAns && ans[n] ? ans[n] : ''}"
+             placeholder="${showAns ? '' : '·'}">`;
+    d.onclick = e => { if (e.target.tagName !== 'INPUT')
+      { page = b.regions[0].page; sel = key(b); draw(); } };
+    d.querySelector('input').onchange = e => {
+      ans[n] = e.target.value.trim(); localStorage.setItem('ans', JSON.stringify(ans)); side();
+    };
+    L.append(d);
+  }
+}
+
+/* ── 필기 ── */
+const cv = $('#ink'), cx = cv.getContext('2d');
+let drawing = null;
+const strokesOf = no => Object.values(ink).flat().filter(s => s.q === no);
+
+function paintInk() {
+  const r = $('#page').getBoundingClientRect();
+  cv.width = r.width; cv.height = r.height;
+  cx.lineCap = cx.lineJoin = 'round'; cx.strokeStyle = '#111'; cx.lineWidth = 2;
+  for (const s of (ink[page] || [])) {
+    cx.beginPath();
+    s.p.forEach(([x, y], i) => i ? cx.lineTo(x * cv.width, y * cv.height)
+                                 : cx.moveTo(x * cv.width, y * cv.height));
+    cx.stroke();
+  }
+}
+const pos = e => { const r = cv.getBoundingClientRect();
+  return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+
+cv.onpointerdown = e => { if (!pen) return;
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+  drawing = { p: [pos(e)] }; };
+cv.onpointermove = e => { if (!drawing) return;
+  drawing.p.push(pos(e)); paintInk();
+  cx.beginPath();
+  drawing.p.forEach(([x, y], i) => i ? cx.lineTo(x * cv.width, y * cv.height)
+                                     : cx.moveTo(x * cv.width, y * cv.height));
+  cx.stroke(); };
+cv.onpointerup = () => {
+  if (!drawing) return;
+  const P = drawing.p;
+  const cxx = P.reduce((a, q) => a + q[0], 0) / P.length;   // 획 중심점
+  const cyy = P.reduce((a, q) => a + q[1], 0) / P.length;
+  let q = null;                                            // ← 문항 귀속
+  for (const b of qOf(page)) if (!b.shared)
+    for (const r of b.regions.filter(r => r.page === page)) {
+      const [x, y, w, h] = r.box;
+      if (cxx >= x && cxx <= x + w && cyy >= y && cyy <= y + h) q = b.nos[0];
+    }
+  (ink[page] ??= []).push({ q, p: P.map(([a, b]) => [+a.toFixed(3), +b.toFixed(3)]) });
+  localStorage.setItem('ink', JSON.stringify(ink));
+  drawing = null; side();
+};
+
+/* ── 조작 ── */
+$('#prev').onclick = () => { page--; sel = null; draw(); };
+$('#next').onclick = () => { page++; sel = null; draw(); };
+$('#tBox').onclick = e => { showBox = !showBox; e.target.classList.toggle('on', showBox); draw(); };
+$('#tAns').onclick = e => { showAns = !showAns; e.target.classList.toggle('on', showAns); side(); };
+$('#tPen').onclick = e => { pen = !pen; e.target.classList.toggle('on', pen);
+  cv.style.pointerEvents = pen ? 'auto' : 'none'; };
+$('#clr').onclick = () => { if (confirm('이 페이지 필기를 지웁니다')) {
+  delete ink[page]; localStorage.setItem('ink', JSON.stringify(ink)); paintInk(); side(); } };
+onkeydown = e => { if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowLeft' && page > 1) $('#prev').click();
+  if (e.key === 'ArrowRight' && page < D.pages.length) $('#next').click(); };
+$('#img').onload = paintInk; onresize = paintInk;
+cv.style.pointerEvents = 'none';
+</script></body></html>
