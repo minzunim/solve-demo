@@ -44,11 +44,7 @@ button:disabled{opacity:.45;cursor:default}
   <div class="drop" id="d2">클릭해서 선택<div class="f" id="n2">없으면 나중에 직접 입력할 수 있습니다</div>
     <input type="file" id="key" accept="application/pdf"></div>
 
-  <label style="margin-top:4px">접근 코드 <span class="k">(데모)</span></label>
-  <input id="code" type="password" placeholder="발급받은 코드"
-    style="width:100%;padding:11px;font:inherit;border:1px solid #d4d4d8;border-radius:9px;margin-bottom:16px">
-
-  <button id="go">분석하기</button>
+  <button id="go" style="margin-top:4px">분석하기</button>
 </form>
 <div id="out"></div>
 </div>
@@ -63,7 +59,7 @@ function renderResume() {
       <a href="/viewer.html?id=${id}">선생님 화면</a>
       <a class="go" href="/solve.html?id=${id}">학생 화면</a>
     </div>
-    <button type="button" id="reset" style="margin-top:10px;background:#fff;color:#991b1b;border:1px solid #fecaca">새로 시작 (이 문서 잊기)</button>
+    <button type="button" id="reset" style="margin-top:10px;background:#fff;color:#991b1b;border:1px solid #fecaca">새 문서 업로드</button>
   </div>` : '';
   const rb = $('#reset');
   if (rb) rb.onclick = () => { localStorage.removeItem('lastId'); renderResume(); };
@@ -90,8 +86,7 @@ $('#f').onsubmit = async e => {
   if ($('#key').files[0]) fd.append('key', $('#key').files[0]);
 
   try {
-    const r = await fetch('/api/upload', { method: 'POST', body: fd,
-      headers: $('#code').value ? { 'x-demo-key': $('#code').value } : {} });
+    const r = await fetch('/api/upload', { method: 'POST', body: fd });
     const j = await r.json();
     if (!r.ok || j.error) throw new Error(j.error || j.detail || '처리 실패');
 

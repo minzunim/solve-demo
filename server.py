@@ -1,6 +1,7 @@
 """업로드 → 처리 → 결과 보기.  실행: ./.venv/bin/uvicorn server:app --reload"""
 import json, shutil, uuid, pathlib, traceback
 import os
+from typing import Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, Header
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,8 +30,8 @@ def sweep():
 
 
 @app.post('/api/upload')
-async def upload(paper: UploadFile = File(...), key: UploadFile | None = File(None),
-                 x_demo_key: str | None = Header(None)):
+async def upload(paper: UploadFile = File(...), key: Optional[UploadFile] = File(None),
+                 x_demo_key: Optional[str] = Header(None)):
     if DEMO_KEY and x_demo_key != DEMO_KEY:
         raise HTTPException(401, '접근 코드가 필요합니다')
     if not paper.filename.lower().endswith('.pdf'):
