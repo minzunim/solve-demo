@@ -33,6 +33,8 @@ button:disabled{opacity:.45;cursor:default}
 <p class="sub">PDF를 올리면 문항 영역을 자동으로 잘라내고, 정답표가 있으면 정답까지 붙입니다.<br>
 <span style="font-size:12px">※ 현재 평가원 기출 형식(2단 조판, 텍스트 PDF)만 지원합니다. 업로드한 파일은 24시간 뒤 삭제됩니다.</span></p>
 
+<div id="resume"></div>
+
 <form id="f">
   <label>문제지 PDF <span style="color:#dc2626">*</span></label>
   <div class="drop" id="d1">클릭해서 선택<div class="f" id="n1">또는 파일을 여기로 끌어다 놓으세요</div>
@@ -52,6 +54,21 @@ button:disabled{opacity:.45;cursor:default}
 </div>
 <script>
 const $ = s => document.querySelector(s);
+
+function renderResume() {
+  const id = localStorage.getItem('lastId');
+  $('#resume').innerHTML = id ? `<div class="card">
+    <div class="k">최근 분석한 문서로 이어서 보기</div>
+    <div class="links">
+      <a href="/viewer.html?id=${id}">선생님 화면</a>
+      <a class="go" href="/solve.html?id=${id}">학생 화면</a>
+    </div>
+    <button type="button" id="reset" style="margin-top:10px;background:#fff;color:#991b1b;border:1px solid #fecaca">새로 시작 (이 문서 잊기)</button>
+  </div>` : '';
+  const rb = $('#reset');
+  if (rb) rb.onclick = () => { localStorage.removeItem('lastId'); renderResume(); };
+}
+renderResume();
 [['d1','paper','n1'],['d2','key','n2']].forEach(([d,i,n]) => {
   const D = $('#'+d), I = $('#'+i), N = $('#'+n);
   D.onclick = () => I.click();
@@ -77,6 +94,9 @@ $('#f').onsubmit = async e => {
       headers: $('#code').value ? { 'x-demo-key': $('#code').value } : {} });
     const j = await r.json();
     if (!r.ok || j.error) throw new Error(j.error || j.detail || '처리 실패');
+
+    localStorage.setItem('lastId', j.id);
+    renderResume();
 
     const q = j.quality;
     const cls = q.ok ? 'ok' : (q.verdict === 'AI필요' ? 'no' : 'warn');
