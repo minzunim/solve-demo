@@ -1,11 +1,9 @@
 #!/bin/bash
 # Lightsail / EC2 안에서 1회 실행 (Ubuntu · Amazon Linux 양쪽 지원)
-#   DEMO_KEY=원하는코드 ./deploy-lightsail.sh
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 USER_NAME="$(whoami)"
-DEMO_KEY="${DEMO_KEY:-$(head -c 9 /dev/urandom | base64 | tr -d '/+=')}"
 
 echo "▸ 패키지 매니저 확인"
 if command -v apt-get >/dev/null; then
@@ -35,7 +33,6 @@ After=network.target
 [Service]
 User=${USER_NAME}
 WorkingDirectory=${APP_DIR}
-Environment=DEMO_KEY=${DEMO_KEY}
 Environment=TTL_HOURS=24
 ExecStart=${APP_DIR}/.venv/bin/uvicorn server:app --host 0.0.0.0 --port 80
 AmbientCapabilities=CAP_NET_BIND_SERVICE
@@ -55,7 +52,6 @@ IP="$(curl -s --max-time 5 ifconfig.me || echo '<인스턴스 IP>')"
 echo
 echo "───────────────────────────────"
 echo "  주소      : http://${IP}/"
-echo "  접근 코드 : ${DEMO_KEY}"
 echo "───────────────────────────────"
 echo "로그:   sudo journalctl -u solve -f"
 echo "재시작: sudo systemctl restart solve"

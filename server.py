@@ -2,7 +2,7 @@
 import json, shutil, uuid, pathlib, traceback
 import os
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -11,7 +11,6 @@ import build, answers
 ROOT = pathlib.Path(__file__).parent
 DATA = ROOT / 'data'; DATA.mkdir(exist_ok=True)
 MAX_MB = 30
-DEMO_KEY = os.getenv('DEMO_KEY')          # 설정하면 업로드에 코드 필요
 TTL_H   = int(os.getenv('TTL_HOURS', 24))  # 이 시간 뒤 업로드 자동 삭제
 
 app = FastAPI()
@@ -30,10 +29,7 @@ def sweep():
 
 
 @app.post('/api/upload')
-async def upload(paper: UploadFile = File(...), key: Optional[UploadFile] = File(None),
-                 x_demo_key: Optional[str] = Header(None)):
-    if DEMO_KEY and x_demo_key != DEMO_KEY:
-        raise HTTPException(401, '접근 코드가 필요합니다')
+async def upload(paper: UploadFile = File(...), key: Optional[UploadFile] = File(None)):
     if not paper.filename.lower().endswith('.pdf'):
         raise HTTPException(400, 'PDF 파일만 업로드할 수 있습니다')
 
